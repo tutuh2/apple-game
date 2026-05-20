@@ -40,9 +40,9 @@
 | 점수대 | 평가 |
 |---|---|
 | < 113 | 실패 (greedy_smallest도 못 이김) |
-| 113~135 | 미흡 (휴리스틱은 이겼지만 의미 작음) |
-| **140~160** | **타겟** (사람 평균 ~ 사람 상급) |
-| 160+ | 우수 (사람 만점급) |
+| 113~125 | 약간 우위 (휴리스틱은 이김, 숙련 사용자 평균) |
+| **130~150** | **타겟** (잘하는 사람 운 좋을 때 수준) |
+| 150+ | 우수 (사람 거의 안 나오는 영역) |
 
 ## Step 2 산출물 (2026-05-19 구축 완료)
 
@@ -67,7 +67,7 @@ python3 -m agent.train --steps 200000 --seed 0 --device auto
 python3 scripts/eval_ppo.py models/ppo_fruitbox_200000.zip --episodes 100
 ```
 
-**목표:** 평균 113점(greedy_smallest) 초과 → 140~160점이 타겟. 못 넘으면 하이퍼파라미터 튜닝 (learning_rate, n_steps, ent_coef) 또는 CNN policy로 전환.
+**목표:** 평균 113점(greedy_smallest) 초과 → 130~150점이 타겟 (잘하는 사람 수준). 못 넘으면 하이퍼파라미터 튜닝 (learning_rate, n_steps, ent_coef) 또는 CNN policy로 전환.
 
 ## 코딩 원칙
 
