@@ -1068,8 +1068,29 @@ class AutoPlayerApp:
 
                 actions = find_valid_actions(game)
                 if not actions:
-                    self._log("[PLAY] valid 액션 없음 → 종료")
-                    break
+                    # 인식 노이즈로 잘못 본 거일 수 있음 → 한 번 더 캡처해 재시도
+                    if self.stop_event.wait(0.20):
+                        break
+                    board = self._capture_and_recognize()
+                    game.board = board
+                    apples_now = int((board > 0).sum())
+                    actions = find_valid_actions(game)
+                    self._log(
+                        f"[RETRY] valid 액션 없음 → 재인식: 사과 {apples_now}개, "
+                        f"valid 액션 {len(actions)}개"
+                    )
+                    if not actions:
+                        # 종료 직전 보드 상태 로그 (진단용)
+                        board_lines = []
+                        for r in range(board.shape[0]):
+                            board_lines.append(
+                                " ".join(str(int(v)) if v > 0 else "." for v in board[r])
+                            )
+                        self._log(
+                            f"[PLAY] valid 액션 없음 → 종료. 인식 보드 (사과 {apples_now}개):\n"
+                            + "\n".join(board_lines)
+                        )
+                        break
 
                 # 정렬 우선순위 (fallback용):
                 # 1) 사각형 안 0(빈 칸) 개수 적은 것 — 인식 오류 의심 액션 회피
