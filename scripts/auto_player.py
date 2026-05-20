@@ -900,6 +900,7 @@ class AutoPlayerApp:
         recent_fail_actions: set[tuple[int, int, int, int]] = set()
         fail_cool_steps = 5
         fail_cool: dict[tuple[int, int, int, int], int] = {}
+        rng = np.random.default_rng(0)  # random_policy / 기타 정책용
 
         retina_scale = get_retina_scale()
         recog_scale = self.recognize_scale
