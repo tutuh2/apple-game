@@ -311,6 +311,8 @@ apple/
 
 ## 다른 컴퓨터에서 이어서 작업하기
 
+### macOS / Linux
+
 ```bash
 git clone https://github.com/tutuh2/apple-game.git
 cd apple-game
@@ -326,6 +328,31 @@ brew install tesseract              # macOS
 
 # 테스트로 환경 OK 확인 (97개 통과)
 pytest -q
+```
+
+### Windows (4060 등 NVIDIA GPU 환경)
+
+```powershell
+git clone https://github.com/tutuh2/apple-game.git
+cd apple-game
+
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# CUDA 12.x용 PyTorch (4060이면 cu121 권장)
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Tesseract OCR 설치 (https://github.com/UB-Mannheim/tesseract/wiki 에서 인스톨러)
+# 설치 후 환경변수 Path에 C:\Program Files\Tesseract-OCR 추가
+
+pytest -q
+```
+
+GPU 사용 학습:
+```bash
+python -m agent.train --steps 200000 --device cuda --seed 0
+python -m agent.train_pointer --steps 200000 --device cuda --seed 0
 ```
 
 큰 RL 체크포인트(`models/*.pt`, `*.zip`)는 git에서 제외됨 — 필요하면 다시 학습:
