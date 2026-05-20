@@ -86,6 +86,36 @@ def _filter_by_grid_size(
     return filtered
 
 
+def _trim_outliers(
+    components: list[tuple[int, int, int, int, int]],
+) -> list[tuple[int, int, int, int, int]]:
+    """격자 중앙 클러스터에서 멀리 떨어진 컴포넌트 제거.
+
+    다른 빨간 UI(브라우저 탭/아이콘 등)가 1~몇 개 잡혀서 양 끝 좌표가
+    왜곡되는 케이스 방어. IQR 기반 — 정상 격자에선 거의 모든 점이 살아남음
+    (안전, 회귀 위험 작음).
+    """
+    if len(components) < 10:
+        return components
+    xs = np.array([c[0] for c in components], dtype=np.float32)
+    ys = np.array([c[1] for c in components], dtype=np.float32)
+    qx1, qx3 = np.percentile(xs, [25, 75])
+    qy1, qy3 = np.percentile(ys, [25, 75])
+    iqr_x = max(float(qx3 - qx1), 1.0)
+    iqr_y = max(float(qy3 - qy1), 1.0)
+    # 1.5*IQR은 너무 빡빡. 격자가 IQR 자체보다 좀 더 넓을 수 있으니 2.0*IQR.
+    lo_x, hi_x = float(qx1) - 2.0 * iqr_x, float(qx3) + 2.0 * iqr_x
+    lo_y, hi_y = float(qy1) - 2.0 * iqr_y, float(qy3) + 2.0 * iqr_y
+    trimmed = [
+        c for c in components
+        if lo_x <= c[0] <= hi_x and lo_y <= c[1] <= hi_y
+    ]
+    # 너무 많이 떨어내면 위험 → 절반 이하로 줄면 원본 반환 (보수적)
+    if len(trimmed) < len(components) * 0.7:
+        return components
+    return trimmed
+
+
 def _cluster_axis(values: list[int], expected_n: int) -> Optional[list[int]]:
     """1D 좌표들을 expected_n 개의 클러스터로 나눠 중심값 반환.
 
@@ -126,6 +156,13 @@ def detect_grid(image_rgb: np.ndarray) -> Optional[DetectionResult]:
     if len(components) < BOARD_ROWS * BOARD_COLS // 2:
         return None
     components = _filter_by_grid_size(components)
+    if len(components) < BOARD_ROWS * BOARD_COLS // 2:
+        return None
+
+    # 추가 outlier 제거: 다른 빨간 UI 요소(브라우저 탭 색, 아이콘 등)가
+    # 격자 밖에 1~몇 개 잡혀 양 끝 좌표로 cell_w 추정을 망가뜨리는 케이스.
+    # 컴포넌트들의 x/y 중앙값(=격자 중심) 기준 IQR로 멀리 떨어진 점 제거.
+    components = _trim_outliers(components)
     if len(components) < BOARD_ROWS * BOARD_COLS // 2:
         return None
 
