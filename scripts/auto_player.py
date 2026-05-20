@@ -46,6 +46,8 @@ import cv2  # noqa: E402
 from agent.heuristics import (  # noqa: E402
     find_valid_actions,
     greedy_smallest_policy,
+    greedy_largest_policy,
+    random_policy,
 )
 from env.fruit_box import Action, FruitBox  # noqa: E402
 
@@ -55,6 +57,13 @@ pyautogui.PAUSE = 0.0
 
 TEMPLATES_PATH = Path("models/site_templates.npz")
 DEBUG_DIR = Path("/tmp/auto_player_debug")
+
+# UI 드롭다운에 표시되는 정책 이름 ↔ 내부 식별자
+POLICY_CHOICES = ("greedy_smallest", "greedy_largest", "random", "PointerNet")
+POINTER_MODEL_CANDIDATES = (
+    Path("models/pointer_v1_shaped_200000.pt"),
+    Path("models/pointer_v1_shaped_50000.pt"),
+)
 
 
 def _dump_capture(img: np.ndarray, name: str) -> Path:
@@ -136,6 +145,58 @@ def get_retina_scale() -> float:
     return physical_w / logical_w if logical_w > 0 else 1.0
 
 
+def _pointer_action(model, game: FruitBox, device):
+    """PointerNet으로 다음 액션 선택. 모델/디바이스는 lazy 로드된 객체.
+
+    실패 시(후보 없음) None.
+    """
+    import torch  # noqa: WPS433 — lazy import (PyTorch 없는 환경 회피)
+    from agent.ppo_pointer import compute_candidates, _board_to_obs
+
+    coords, feats = compute_candidates(game.board)
+    if len(coords) == 0:
+        return None
+    with torch.no_grad():
+        board_t = (
+            torch.from_numpy(_board_to_obs(game.board)).unsqueeze(0).to(device)
+        )
+        feats_t = torch.from_numpy(feats).unsqueeze(0).to(device)
+        mask_t = torch.ones(1, feats.shape[0], dtype=torch.bool, device=device)
+        logits, _ = model(board_t, feats_t, mask_t)
+        idx = int(torch.argmax(logits[0]).item())
+    r1, c1, r2, c2 = (int(x) for x in coords[idx])
+    return Action(r1, c1, r2, c2)
+
+
+def select_action(
+    policy_name: str,
+    game: FruitBox,
+    rng: np.random.Generator,
+    pointer_model=None,
+    pointer_device=None,
+    fallback_to_smallest: bool = True,
+) -> Optional[Action]:
+    """현재 게임 상태에서 정책 이름에 따라 액션 선택.
+
+    PointerNet은 모델/디바이스가 None이면 fallback_to_smallest 옵션에 따라
+    greedy_smallest로 폴백 또는 None.
+    """
+    if policy_name == "greedy_smallest":
+        return greedy_smallest_policy(game, rng)
+    if policy_name == "greedy_largest":
+        return greedy_largest_policy(game, rng)
+    if policy_name == "random":
+        return random_policy(game, rng)
+    if policy_name == "PointerNet":
+        if pointer_model is None or pointer_device is None:
+            if fallback_to_smallest:
+                return greedy_smallest_policy(game, rng)
+            return None
+        return _pointer_action(pointer_model, game, pointer_device)
+    # 알 수 없는 정책 → 안전하게 smallest
+    return greedy_smallest_policy(game, rng)
+
+
 def drag(
     start_xy: tuple[int, int],
     end_xy: tuple[int, int],
@@ -201,6 +262,12 @@ class AutoPlayerApp:
         self.worker: threading.Thread | None = None
         self.stop_event = threading.Event()
         self.log_q: queue.Queue[str] = queue.Queue()
+
+        # 정책 선택 상태
+        self.policy_var = tk.StringVar(value="greedy_smallest")
+        self.pointer_model = None
+        self.pointer_device = None
+        self.pointer_loaded_path: Path | None = None
 
         # 로그를 파일에도 기록 (claude가 직접 읽도록)
         DEBUG_DIR.mkdir(parents=True, exist_ok=True)
@@ -307,6 +374,21 @@ class AutoPlayerApp:
             pady=8,
         )
         self.stop_btn.pack(side="left", padx=6)
+
+        # 정책 선택 드롭다운
+        tk.Label(
+            row2, text="정책:", bg=SECTION_BG, fg="#222",
+            font=("Arial", 11),
+        ).pack(side="left", padx=(12, 4))
+        self.policy_menu = tk.OptionMenu(
+            row2, self.policy_var, *POLICY_CHOICES,
+        )
+        self.policy_menu.configure(
+            font=("Arial", 11), bg=SECTION_BG, fg="#222",
+            highlightthickness=0, bd=1, relief="solid",
+        )
+        self.policy_menu.pack(side="left")
+
         self.play_status = tk.Label(
             row2, text="대기 중", fg="#666", bg=SECTION_BG, font=("Arial", 12)
         )
@@ -582,6 +664,37 @@ class AutoPlayerApp:
             self.detect_status.configure(text="에러", foreground="#c33")
             self.detect_btn.configure(state="normal")
 
+    def _ensure_pointer_loaded(self) -> bool:
+        """PointerNet 모델 lazy 로드. 성공 시 True, 실패 시 False(자동 greedy fallback)."""
+        if self.pointer_model is not None:
+            return True
+        model_path = None
+        for cand in POINTER_MODEL_CANDIDATES:
+            if cand.exists():
+                model_path = cand
+                break
+        if model_path is None:
+            self._log(
+                "[POLICY] PointerNet 모델 파일 없음 → greedy_smallest로 폴백"
+            )
+            return False
+        try:
+            import torch
+            from agent.pointer_net import PointerNet
+
+            device = torch.device("cpu")
+            model = PointerNet().to(device)
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.eval()
+            self.pointer_model = model
+            self.pointer_device = device
+            self.pointer_loaded_path = model_path
+            self._log(f"[POLICY] PointerNet 로드: {model_path}")
+            return True
+        except Exception as e:
+            self._log(f"[POLICY] PointerNet 로드 실패 ({e}) → greedy_smallest 폴백")
+            return False
+
     def _on_start(self) -> None:
         if self.calibration is None or self.templates is None:
             self._log("[START] 검출 먼저 하세요.")
@@ -589,6 +702,10 @@ class AutoPlayerApp:
         if self.worker and self.worker.is_alive():
             self._log("[START] 이미 진행 중")
             return
+        policy_name = self.policy_var.get()
+        self._log(f"[START] 선택된 정책: {policy_name}")
+        if policy_name == "PointerNet":
+            self._ensure_pointer_loaded()
         self.stop_event.clear()
         self.start_btn.configure(state="disabled")
         self.detect_btn.configure(state="disabled")
@@ -912,9 +1029,9 @@ class AutoPlayerApp:
                     self._log("[PLAY] valid 액션 없음 → 종료")
                     break
 
-                # 정렬 우선순위:
-                # 1) 사각형 안 0(빈 칸) 개수 적은 것 — 인식 오류로 의심되는 액션 회피
-                # 2) 사각형 크기 작은 것 — greedy_smallest 보드 모양 보존
+                # 정렬 우선순위 (fallback용):
+                # 1) 사각형 안 0(빈 칸) 개수 적은 것 — 인식 오류 의심 액션 회피
+                # 2) 사각형 크기 작은 것 — 보드 모양 보존
                 # 3) 위치 (안정적 ordering)
                 def action_key(a: Action) -> tuple[int, int, int, int]:
                     cells = board[a.r1 : a.r2 + 1, a.c1 : a.c2 + 1]
@@ -924,16 +1041,28 @@ class AutoPlayerApp:
 
                 actions_sorted = sorted(actions, key=action_key)
 
-                # 최근 실패한 액션은 일정 step 동안 회피
+                # 선택된 정책으로 액션 결정. cooldown이면 fallback 정렬에서 회피.
+                policy_name = self.policy_var.get()
+                primary = select_action(
+                    policy_name, game, rng,
+                    pointer_model=self.pointer_model,
+                    pointer_device=self.pointer_device,
+                )
                 action = None
-                for cand in actions_sorted:
-                    key = (cand.r1, cand.c1, cand.r2, cand.c2)
-                    if key not in fail_cool:
-                        action = cand
-                        break
+                if primary is not None:
+                    pkey = (primary.r1, primary.c1, primary.r2, primary.c2)
+                    if pkey not in fail_cool:
+                        action = primary
                 if action is None:
-                    # 모든 후보가 cooldown 중이면 첫 번째 그냥 시도
-                    action = actions_sorted[0]
+                    # 정책의 1순위가 cooldown → fallback 정렬에서 cooldown 아닌 것
+                    for cand in actions_sorted:
+                        key = (cand.r1, cand.c1, cand.r2, cand.c2)
+                        if key not in fail_cool:
+                            action = cand
+                            break
+                if action is None:
+                    # 모든 후보가 cooldown 중이면 정책 결정값 그대로 (없으면 정렬 첫 번째)
+                    action = primary if primary is not None else actions_sorted[0]
 
                 start_xy_phys, end_xy_phys = action_to_pixels(
                     action, self.calibration
