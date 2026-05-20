@@ -1,0 +1,19 @@
+# 코어
+numpy>=1.26
+pytest>=8.0
+
+# Step 2: RL 학습/평가
+gymnasium>=0.29
+stable-baselines3>=2.3
+sb3-contrib>=2.3
+torch>=2.2
+
+# Step 3: 사이트 자동 플레이 (scripts/auto_player.py)
+opencv-python>=4.9
+pillow>=10.0
+mss>=9.0
+pyautogui>=0.9.54
+pytesseract>=0.3.10
+# pytesseract는 시스템에 tesseract 바이너리 필요:
+#   macOS:  brew install tesseract
+#   Linux:  apt install tesseract-ocr

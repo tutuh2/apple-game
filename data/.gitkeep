@@ -1,0 +1,2 @@
+# 자동 생성/사용자 환경 파일이 들어가는 디렉터리.
+# imitation_*.npz, site_captures/* 는 .gitignore에서 제외됨.

@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg
+build/
+dist/
+
+# Virtualenv (이 프로젝트의 env/ 는 시뮬레이터 디렉터리라 제외하지 않음)
+.venv/
+venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code 워크스페이스 로컬 설정
+.claude/
+
+# 대형 RL 학습 체크포인트 — 필요하면 따로 공유
+models/*.pt
+models/*.zip
+# ↑ 단, 사이트 자동 플레이용 템플릿은 포함
+!models/site_templates.npz
+
+# 학습용 모방 데이터 (자동 생성, 크기 큼)
+data/imitation_*.npz
+
+# 사이트 캡처 스크린샷 (개인 환경 종속)
+data/site_captures/
+
+# 임시 / 디버그 산출물
+/tmp/
+*.log
+
+# 캘리브레이션 파일 (환경마다 다름)
+calibration.json
