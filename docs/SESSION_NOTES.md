@@ -269,6 +269,27 @@ cat docs/SESSION_NOTES.md
 2. 인식 더 강건화: 셀 마스크 다중 임계 평균화
 3. 드래그 더 빠르게: drag_dur 더 줄여 시간 한도 안에 더 많은 step
 
+### 핵심 인사이트: 순서 의존성 (path dependency)
+같은 보드, 같은 사과 셋이라도 **어떤 순서로 지우느냐**에 따라 미래에 가능한
+사각형이 달라진다. 예:
+```
+3 6 7        (3,7)은 가로로 6이 끼어서 못 묶음.
+5 4 9        근데 (6,4)를 먼저 지우면:
+
+3 . 7        이제 가로 1×3에 [3, 0, 7] = 합 10 → (3,7) 가능!
+5 . 9
+```
+greedy_smallest가 강한 이유 = **빈 칸을 흩뿌려서 "건너뛰는 사각형" 옵션을 만들어둠**.
+greedy_largest가 약한 이유 = 큰 영역을 한 번에 비워 보드 모양 파괴 → 순서 의존성 손해.
+
+RL이 113점을 못 깬 본질 = 이 path-dependency 신호를 학습으로 추출하기 어렵기 때문.
+- 1-step lookahead: 약함 (109점, greedy_smallest보다 못함)
+- MCTS / beam search: leaf value 약해서 113 근처에서 막힘
+- 정공법: AlphaZero급 self-play (MCTS + value net 반복 학습) — GPU + 수일 필요
+
+이 문제 자체가 path-dependent combinatorial search라는 사실은 학습 가치 있음.
+(deterministic + perfect info + 단일 플레이어 게임에서 RL이 본질적으로 어색한 이유)
+
 ### git 상태
 - `.gitignore` 추가, `models/*.zip,*.pt` 제외 (단 `site_templates.npz` 포함)
 - `data/site_captures/`, `*.log`, `/tmp/`, `calibration.json` 제외
