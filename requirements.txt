@@ -17,3 +17,8 @@ pytesseract>=0.3.10
 # pytesseract는 시스템에 tesseract 바이너리 필요:
 #   macOS:  brew install tesseract
 #   Linux:  apt install tesseract-ocr
+
+# 글로벌 ESC 단축키 (브라우저 포커스 중에도 자동 플레이 중단)
+pynput>=1.7
+# macOS는 첫 실행 시 시스템 설정 > 개인정보 보호 및 보안 > 입력 모니터링/접근성에서
+# Terminal/iTerm/Python 권한 허용 필요

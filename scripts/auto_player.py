@@ -280,9 +280,14 @@ class AutoPlayerApp:
             pass
 
         # 키보드 단축키: Esc / Cmd+. / Ctrl+C → STOP
+        # 앱 창에 포커스 있을 때만 동작 (브라우저에 포커스 있으면 글로벌 리스너가 처리)
         self.root.bind("<Escape>", lambda e: self._on_stop())
         self.root.bind("<Command-period>", lambda e: self._on_stop())
         self.root.bind("<Control-c>", lambda e: self._on_stop())
+
+        # 글로벌 ESC 리스너 (포커스가 브라우저에 있어도 동작)
+        self._global_key_listener = None
+        self._start_global_key_listener()
 
         self._build_ui()
         self._poll_log_queue()
@@ -451,7 +456,7 @@ class AutoPlayerApp:
 
         help_text = (
             "사용법: 사이트에서 Play 누른 뒤 → DETECT → START\n"
-            "비상정지: STOP 버튼 / Esc / Cmd+. / 마우스를 좌상단 코너로"
+            "비상정지: STOP 버튼 / Esc (글로벌) / 마우스를 좌상단 코너로"
         )
         tk.Label(
             self.root,
@@ -717,6 +722,42 @@ class AutoPlayerApp:
     def _start_worker(self) -> None:
         self.worker = threading.Thread(target=self._play_loop, daemon=True)
         self.worker.start()
+
+    def _start_global_key_listener(self) -> None:
+        """OS 레벨 ESC 후킹. 브라우저 포커스 중에도 작동.
+
+        pynput 없거나 macOS 접근성 권한 없으면 조용히 실패 (앱 자체는 작동).
+        """
+        try:
+            from pynput import keyboard
+        except Exception as e:
+            self._log(
+                f"[KEY] pynput 로드 실패 ({e}). 글로벌 ESC 비활성. "
+                "STOP 버튼이나 마우스를 화면 좌상단 코너로 이동해 중단하세요."
+            )
+            return
+
+        def _on_press(key):
+            try:
+                if key == keyboard.Key.esc:
+                    # tkinter 메인 루프에서 안전하게 호출
+                    self.root.after(0, self._on_stop)
+            except Exception:
+                pass
+
+        try:
+            listener = keyboard.Listener(on_press=_on_press)
+            listener.daemon = True
+            listener.start()
+            self._global_key_listener = listener
+            self._log(
+                "[KEY] 글로벌 ESC 리스너 활성 (브라우저 포커스 중에도 ESC로 중단 가능)"
+            )
+        except Exception as e:
+            self._log(
+                f"[KEY] 리스너 시작 실패 ({e}). macOS면 시스템 설정 > "
+                "개인정보 보호 및 보안 > 입력 모니터링/접근성에서 Terminal 권한 허용 필요"
+            )
 
     def _on_stop(self) -> None:
         # idle 상태(worker 없음)에서 Esc 눌러도 안전
