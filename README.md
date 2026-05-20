@@ -310,8 +310,8 @@ apple/
 ## 다른 컴퓨터에서 이어서 작업하기
 
 ```bash
-git clone <repo-url> apple
-cd apple
+git clone https://github.com/tutuh2/apple-game.git
+cd apple-game
 
 # Python 3.10+ 권장
 python3 -m venv .venv
